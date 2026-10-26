@@ -14,8 +14,8 @@ button:focus-visible,input:focus-visible{outline:3px solid #89d8fa}label{display
 </head>
 <body><main><header><h1>TVFlow AI Manager</h1><small>Administration privée des accès Groq pour TVFlow.</small></header>
 <section id="login"><h2>Connexion administrateur</h2><label>Adresse e-mail<input id="email" type="email" autocomplete="username"></label>
-<label>Mot de passe Supabase Auth<input id="password" type="password" autocomplete="current-password"></label>
-<button type="button" id="loginBtn">Se connecter</button></section>
+<p>Un lien de connexion sera envoyé par e-mail. Aucun mot de passe nécessaire.</p>
+<button type="button" id="loginBtn">Recevoir mon lien de connexion</button></section>
 <section id="panel"><button id="logoutBtn">Se déconnecter</button>
 <h2>Créer une invitation</h2><label>Validité (jours)<input id="days" type="number" min="1" max="30" value="7"></label>
 <label>Quota quotidien<input id="limit" type="number" min="1" max="50" value="15"></label>
@@ -35,17 +35,25 @@ async function call(name,body={}){
  const r=await fetch(api+"/"+name,{method:"POST",headers:{"authorization":"Bearer "+token,"content-type":"application/json"},body:JSON.stringify(body)});
  const j=await r.json();if(!r.ok)throw Error(j.error||"Accès refusé");return j;
 }
-el("loginBtn").onclick=async()=>{
- try{
- const r=await fetch(origin+"/auth/v1/token?grant_type=password",{method:"POST",headers:{"apikey":apikey,"content-type":"application/json"},body:JSON.stringify({email:el("email").value,password:el("password").value})});
- const j=await r.json();if(!r.ok)throw Error("Identifiants incorrects");
- token=j.access_token;el("password").value="";
+async function finishLogin(accessToken){
+ token=accessToken;
  const list=await call("list");
  el("results").textContent=JSON.stringify(list,null,2);
  el("login").style.display="none";el("panel").style.display="block";show("");
- }catch(e){token="";show(e.message)}
-};
-el("logoutBtn").onclick=()=>{token="";el("results").textContent="";el("login").style.display="block";el("panel").style.display="none";show("Déconnecté")};
+}
+// Email OTP links redirect back as #access_token=...&type=magiclink.
+(async()=>{
+ const fragment=new URLSearchParams(location.hash.substring(1));
+ const access=fragment.get("access_token");
+ if(access){history.replaceState(null,"",location.pathname);try{await finishLogin(access)}catch(e){token="";show("Accès administrateur refusé : "+e.message)}}
+})();
+el("loginBtn").onclick=async()=>{
+ try{
+ const r=await fetch(origin+"/auth/v1/otp?redirect_to="+encodeURIComponent(location.origin+location.pathname),{method:"POST",headers:{"apikey":apikey,"content-type":"application/json"},body:JSON.stringify({email:el("email").value.trim(),create_user:false})});
+ if(!r.ok)throw Error("Envoi impossible : vérifie l’adresse et la configuration Supabase Auth");
+ show("Consulte ta messagerie pour ouvrir le lien de connexion.");
+ }catch(e){show(e.message)}
+};el("logoutBtn").onclick=()=>{token="";el("results").textContent="";el("login").style.display="block";el("panel").style.display="none";show("Déconnecté")};
 el("createBtn").onclick=async()=>{try{const j=await call("create",{days:Number(el("days").value),limit:Number(el("limit").value)});show("Code à copier maintenant (affiché une seule fois) : "+j.invitation_code)}catch(e){show(e.message)}};
 el("listBtn").onclick=async()=>{try{el("results").textContent=JSON.stringify(await call("list"),null,2);show("")}catch(e){show(e.message)}};
 el("revokeBtn").onclick=async()=>{try{await call("revoke",{id:el("revokeId").value.trim()});show("Accès révoqué");el("listBtn").click()}catch(e){show(e.message)}};
